@@ -60,10 +60,22 @@ struct sys
     }
 };
 
-int main(void)
+int main(int argc, char *argv[])
 {
     sys E;
-    std::ifstream file("ibm_logo.ch8", std::ios::binary | std::ios::ate);
+
+    bool flag1 = false; // quirk toggle for and, or, xor instruction
+    bool flag2 = false; // quirk toggle for saving and loading registers
+    bool flag3 = false; // quirk toggle for bit shifts
+    bool flag4 = true; // quirk toggle for jump instruction
+
+    if (argc < 2)
+    {
+        std::cout << "Usage: " << argv[0] << " <path_to_rom.ch8>\n";
+        return 1; // Exit with an error code
+    }
+
+    std::ifstream file(argv[1], std::ios::binary | std::ios::ate);
 
     if (file.is_open())
     {
@@ -90,11 +102,16 @@ int main(void)
         return 1;
     }
 
-    int scale = 10;
+    int scale = 30;
     InitWindow(64 * scale, 32 * scale, "deez");
+    InitAudioDevice();
+    Sound sound = LoadSound("sound.mp3");
 
     srand(time(NULL));
     SetTargetFPS(60);
+
+    float phosphor[64][32] = {0.0f};
+    float decay_rate = 20.0f;
 
     while (!WindowShouldClose())
     {
@@ -167,15 +184,28 @@ int main(void)
                 {
                 case 0x0:
                     E.V[X] = E.V[Y];
+
                     break;
                 case 0x1:
                     E.V[X] = E.V[X] | E.V[Y];
+                    if (!flag1)
+                    {
+                        E.V[15] = 0;
+                    }
                     break;
                 case 0x2:
                     E.V[X] = E.V[X] & E.V[Y];
+                    if (!flag1)
+                    {
+                        E.V[15] = 0;
+                    }
                     break;
                 case 0x3:
                     E.V[X] = E.V[X] ^ E.V[Y];
+                    if (!flag1)
+                    {
+                        E.V[15] = 0;
+                    }
                     break;
                 case 0x4:
                 {
@@ -221,6 +251,10 @@ int main(void)
                 }
                 case 0x6:
                 {
+                    if (!flag3)
+                    {
+                        E.V[X] = E.V[Y];
+                    }
                     u8 flag = E.V[X] & 0x1;
                     E.V[X] = E.V[X] >> 1;
                     E.V[15] = flag;
@@ -228,6 +262,10 @@ int main(void)
                 }
                 case 0xE:
                 {
+                    if (!flag3)
+                    {
+                        E.V[X] = E.V[Y];
+                    }
                     u8 flag = (E.V[X] & 0x80) >> 7;
                     E.V[X] = E.V[X] << 1;
                     E.V[15] = flag;
@@ -247,7 +285,14 @@ int main(void)
                 break;
             case 0xB:
             {
-                E.PC = NNN + E.V[0];
+                if (flag4)
+                {
+                    E.PC = NNN + E.V[0];
+                }
+                else
+                {
+                    E.PC = NNN + E.V[X];
+                }
                 break;
             }
             case 0xE:
@@ -374,8 +419,16 @@ int main(void)
                 {
                     for (u8 i = 0; i < X + 1; i++)
                     {
-                        u16 index = E.I + i;
-                        E.mem[index] = E.V[i];
+                        if (flag2)
+                        {
+                            u16 index = E.I + i;
+                            E.mem[index] = E.V[i];
+                        }
+                        else
+                        {
+                            E.mem[E.I] = E.V[i];
+                            E.I += 1;
+                        }
                     }
                     break;
                 }
@@ -383,8 +436,16 @@ int main(void)
                 {
                     for (u8 i = 0; i < X + 1; i++)
                     {
-                        u16 index = E.I + i;
-                        E.V[i] = E.mem[index];
+                        if (flag2)
+                        {
+                            u16 index = E.I + i;
+                            E.V[i] = E.mem[index];
+                        }
+                        else
+                        {
+                            E.V[i] = E.mem[E.I];
+                            E.I += 1;
+                        }
                     }
                     break;
                 }
@@ -397,10 +458,24 @@ int main(void)
         if (E.delay_timer > 0)
             E.delay_timer--;
         if (E.sound_timer > 0)
+        {
+            if (!IsSoundPlaying(sound))
+            {
+                PlaySound(sound);
+            }
             E.sound_timer--;
-
+        }
+        else
+        {
+            if (IsSoundPlaying(sound))
+            {
+                StopSound(sound);
+            }
+        }
         BeginDrawing();
         ClearBackground(BLACK);
+
+        float dt = GetFrameTime();
 
         for (int x = 0; x < 64; x++)
         {
@@ -408,10 +483,28 @@ int main(void)
             {
                 if (E.dis[x][y] == true)
                 {
-                    DrawRectangle(x * scale, y * scale, scale, scale, WHITE);
+                    phosphor[x][y] = 1.0f;
+                }
+                else
+                {
+                    phosphor[x][y] -= decay_rate * dt;
+                    if (phosphor[x][y] < 0.0f)
+                    {
+                        phosphor[x][y] = 0.0f;
+                    }
+                }
+
+                if (phosphor[x][y] > 0.0f)
+                {
+                    // Convert the 0.0 -> 1.0 float to a 0 -> 255 alpha channel
+                    unsigned char alpha = (unsigned char)(phosphor[x][y] * 255.0f);
+                    Color pixel_color = {255, 255, 255, alpha};
+                    DrawRectangle(x * scale, y * scale, scale, scale, pixel_color);
                 }
             }
         }
         EndDrawing();
     }
+    UnloadSound(sound);
+    CloseAudioDevice();
 }
