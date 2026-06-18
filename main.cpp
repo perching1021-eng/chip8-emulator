@@ -67,12 +67,13 @@ int main(int argc, char *argv[])
     bool flag1 = false; // quirk toggle for and, or, xor instruction
     bool flag2 = false; // quirk toggle for saving and loading registers
     bool flag3 = false; // quirk toggle for bit shifts
-    bool flag4 = true; // quirk toggle for jump instruction
+    bool flag4 = true;  // quirk toggle for jump instruction
+    bool flag5 = false; // quirk toggle for FX1E instruction
 
     if (argc < 2)
     {
         std::cout << "Usage: " << argv[0] << " <path_to_rom.ch8>\n";
-        return 1; // Exit with an error code
+        return 1;
     }
 
     std::ifstream file(argv[1], std::ios::binary | std::ios::ate);
@@ -86,6 +87,13 @@ int main(int argc, char *argv[])
 
         if (file.read(buffer, size))
         {
+            if (size > (4096 - 0x200))
+            {
+                std::cout << "Error: ROM file is too large to fit in memory.\n";
+                delete[] buffer;
+                return 1;
+            }
+
             for (int i = 0; i < size; ++i)
             {
                 E.mem[0x200 + i] = (u8)buffer[i];
@@ -149,9 +157,16 @@ int main(int argc, char *argv[])
                 }
                 else if (NNN == 0xEE)
                 {
-                    u16 val = E.stk.top();
-                    E.stk.pop();
-                    E.PC = val;
+                    if (!E.stk.empty())
+                    {
+                        u16 val = E.stk.top();
+                        E.stk.pop();
+                        E.PC = val;
+                    }
+                    else
+                    {
+                        return 1;
+                    }
                 }
                 break;
             case 0x1:
@@ -373,6 +388,13 @@ int main(int argc, char *argv[])
                 case 0x1E:
                 {
                     E.I += E.V[X];
+                    if (flag5)
+                    {
+                        if (E.I > 0x0FFF)
+                        {
+                            E.V[15] = 1;
+                        }
+                    }
                     break;
                 }
                 case 0x0A:
