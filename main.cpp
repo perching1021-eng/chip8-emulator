@@ -69,6 +69,7 @@ int main(int argc, char *argv[])
     bool flag3 = false; // quirk toggle for bit shifts
     bool flag4 = true;  // quirk toggle for jump instruction
     bool flag5 = false; // quirk toggle for FX1E instruction
+    bool flag6 = false; // toggle for phosphopher effect
 
     if (argc < 2)
     {
@@ -503,25 +504,35 @@ int main(int argc, char *argv[])
         {
             for (int y = 0; y < 32; y++)
             {
-                if (E.dis[x][y] == true)
+                if (flag6)
                 {
-                    phosphor[x][y] = 1.0f;
+                    if (E.dis[x][y] == true)
+                    {
+                        phosphor[x][y] = 1.0f;
+                    }
+                    else
+                    {
+                        phosphor[x][y] -= decay_rate * dt;
+                        if (phosphor[x][y] < 0.0f)
+                        {
+                            phosphor[x][y] = 0.0f;
+                        }
+                    }
+
+                    if (phosphor[x][y] > 0.0f)
+                    {
+                        // Convert the 0.0 -> 1.0 float to a 0 -> 255 alpha channel
+                        unsigned char alpha = (unsigned char)(phosphor[x][y] * 255.0f);
+                        Color pixel_color = {255, 255, 255, alpha};
+                        DrawRectangle(x * scale, y * scale, scale, scale, pixel_color);
+                    }
                 }
                 else
                 {
-                    phosphor[x][y] -= decay_rate * dt;
-                    if (phosphor[x][y] < 0.0f)
+                    if (E.dis[x][y] == true)
                     {
-                        phosphor[x][y] = 0.0f;
+                        DrawRectangle(x * scale, y * scale, scale, scale, WHITE);
                     }
-                }
-
-                if (phosphor[x][y] > 0.0f)
-                {
-                    // Convert the 0.0 -> 1.0 float to a 0 -> 255 alpha channel
-                    unsigned char alpha = (unsigned char)(phosphor[x][y] * 255.0f);
-                    Color pixel_color = {255, 255, 255, alpha};
-                    DrawRectangle(x * scale, y * scale, scale, scale, pixel_color);
                 }
             }
         }
